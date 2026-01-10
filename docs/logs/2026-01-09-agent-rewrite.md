@@ -3,7 +3,7 @@
 
 ## Overview
 
-Transformed coderef from a Context7 REST API client into an LLM-powered code example agent using Claude Haiku 4.5 + Context7 MCP + web search fallback.
+Transformed coderef from a Context7 REST API client into an LLM-powered code example agent using Claude Haiku 4.5 + Context7 MCP + web search fallback. Completed output filtering to remove preamble text.
 
 ## Key Decisions
 
@@ -11,13 +11,13 @@ Transformed coderef from a Context7 REST API client into an LLM-powered code exa
 2. **Beta API**: Must use `client.beta.messages.create()` with `betas=[]` parameter
 3. **Tool types**: `web_search_20250305` (not `web_search_tool_20250305`)
 4. **Auth**: Use `authorization_token` in MCP server config (not `headers`)
-5. **Response handling**: Concatenate all text blocks (multiple blocks returned)
+5. **Response handling**: Filter text blocks - only include those after last tool result
 
 ## Artifacts Modified
 
 ### Created
-- `src/coderef/agent.py` - Core agent with Claude + MCP integration
-- `tests/test_agent.py` - 14 unit tests
+- `src/coderef/agent.py` - Core agent with Claude + MCP integration, includes `_extract_final_text()` for filtering
+- `tests/test_agent.py` - 20 unit tests (14 original + 6 for filtering)
 - `docs/stories/009-agent-rewrite.md` - Story documentation
 - `docs/logs/2026-01-09-agent-rewrite.md` - This session log
 
@@ -49,29 +49,17 @@ Transformed coderef from a Context7 REST API client into an LLM-powered code exa
 | `headers` in MCP server config rejected | Use `authorization_token` field instead |
 | `web_search_tool_20250305` not found | Correct type is `web_search_20250305` |
 | Only first text block returned | Concatenate all text blocks in response |
-
-## Open Items
-
-1. **Output formatting**: Pre-tool "preamble" text blocks showing in output (e.g., "I'll use the C and C++ Reference...")
-2. **Code block rendering**: Markdown code fences not rendering properly in terminal
-
-## Next Steps
-
-1. Filter out text blocks that appear before the last tool result (these are "thinking" not final output)
-2. Strengthen system prompt to prevent narration of tool usage
-3. Add tests for the filtering behavior
-4. Verify clean terminal output with real queries
+| Pre-tool preamble in output | Filter text blocks - only include after last `mcp_tool_result` or `web_search_tool_result` |
 
 ## Test Results
 
 ```
-14 passed in 0.54s
+20 passed in 0.31s
 ```
 
 ## Working Commands
 
 ```bash
-# Tested successfully
 coderef "c++ smart pointers"
 coderef "Rust iterators filter map"
 coderef "Python asyncio gather"
@@ -79,15 +67,14 @@ coderef "modern C++ fold_left"
 coderef "gleam language pattern matching"
 ```
 
-## Response Block Types Observed
+## Response Block Types
 
 ```
-mcp_tool_use        - Claude calling Context7
-mcp_tool_result     - Result from Context7
-server_tool_use     - Claude calling web search
+mcp_tool_use           - Claude calling Context7
+mcp_tool_result        - Result from Context7
+server_tool_use        - Claude calling web search
 web_search_tool_result - Result from web search
-text                - Output text (multiple blocks)
+text                   - Output text (multiple blocks)
 ```
 
-Text blocks before/between tool calls = preamble (filter out)
-Text blocks after last tool result = final answer (keep)
+**Filtering logic**: Text blocks before/between tool calls = preamble (filter out). Text blocks after last tool result = final answer (keep).
