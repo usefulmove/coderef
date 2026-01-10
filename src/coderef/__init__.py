@@ -1,28 +1,16 @@
-"""coderef - CLI tool for querying Context7 documentation API."""
+"""coderef - Succinct code example agent powered by Claude and Context7."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
-from .api_client import (
-    APIError,
-    AuthError,
-    Context7Client,
-    NotFoundError,
-    RateLimitError,
-)
-from .config import ConfigManager, ConfigError
-from .library_resolver import LibraryResolver
+from .agent import query, SYSTEM_PROMPT
 from .main import main
-from .output import OutputFormatter
+from .output import print_markdown, print_error, print_info
 
 __all__ = [
-    "ConfigManager",
-    "ConfigError",
-    "Context7Client",
-    "LibraryResolver",
-    "OutputFormatter",
-    "APIError",
-    "AuthError",
-    "NotFoundError",
-    "RateLimitError",
+    "query",
+    "SYSTEM_PROMPT",
     "main",
+    "print_markdown",
+    "print_error",
+    "print_info",
 ]

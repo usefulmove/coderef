@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "coderef"
 version = "0.1.0"
-description = "CLI tool for querying Context7 code documentation API"
+description = "Succinct code example agent powered by Claude and Context7"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -21,10 +21,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "requests>=2.31.0",
+    "anthropic>=0.40.0",
     "rich>=13.7.0",
     "click>=8.1.0",
-    "toml>=0.10.2",
 ]
 
 [project.optional-dependencies]

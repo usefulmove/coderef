@@ -1,249 +1,171 @@
 # coderef Architecture
 
 ## Overview
-coderef is a Python CLI tool that queries the Context7 REST API to provide up-to-date code documentation. It consists of a command-line interface, API client, library resolver, output formatter, and config manager.
+
+coderef is a Python CLI tool that provides succinct code examples by combining Claude Haiku 4.5 with Context7 MCP for documentation grounding. The architecture is intentionally minimal: a CLI entry point, an agent module, and output formatting.
 
 ## Components
 
 | Component | Responsibility | File |
 |-----------|----------------|------|
-| CLI Entry Point | Argument parsing, command routing, main orchestration | `src/coderef/main.py` |
-| API Client | HTTP requests to Context7 API, error handling | `src/coderef/api_client.py` |
-| Library Resolver | Extract keywords from questions, search for libraries, confidence scoring | `src/coderef/library_resolver.py` |
-| Output Formatter | Rich terminal formatting, syntax highlighting, markdown rendering | `src/coderef/output.py` |
-| Config Manager | Read/write config file, API key validation | `src/coderef/config.py` |
-| Utilities | API key validation helpers | `src/coderef/utils.py` |
+| CLI Entry Point | Argument parsing, error handling, output display | `src/coderef/main.py` |
+| Agent | Claude API calls, MCP configuration, tool orchestration | `src/coderef/agent.py` |
+| Output | Rich markdown rendering | `src/coderef/output.py` |
+
+## Data Flow
+
+```
+User: coderef "modern C++ fold_left"
+         │
+         ▼
+    ┌─────────────┐
+    │  Click CLI  │  Parse args, validate env vars
+    └─────────────┘
+         │
+         ▼
+    ┌─────────────────────────────────────────────┐
+    │         Anthropic Messages API              │
+    │  ┌───────────────────────────────────────┐  │
+    │  │ Model: claude-haiku-4-5               │  │
+    │  │ System: Succinct code example prompt  │  │
+    │  │ MCP: https://mcp.context7.com/mcp     │  │
+    │  │ Tools: [mcp_toolset, web_search]      │  │
+    │  │ Beta: mcp-client, web-search          │  │
+    │  └───────────────────────────────────────┘  │
+    └─────────────────────────────────────────────┘
+         │
+         │  Claude orchestrates tools:
+         │  1. resolve-library-id (Context7)
+         │  2. query-docs (Context7)
+         │  3. web_search (fallback)
+         │
+         ▼
+    ┌─────────────┐
+    │  Response   │  Code snippet + one-sentence explanation
+    └─────────────┘
+         │
+         ▼
+    ┌─────────────┐
+    │ Rich Output │  Markdown with syntax highlighting
+    └─────────────┘
+```
 
 ## Key Decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| Use Click for CLI | Better than argparse for complex argument handling, well-maintained |
-| Use Rich for output | Best-in-class terminal formatting, built-in syntax highlighting |
-| Use TOML for config | Human-readable, Python 3.11+ has built-in support |
-| Confidence-based library detection | Balances automation with user control |
-| Direct REST API calls | Simpler than MCP integration, no local server required |
+| Claude Haiku 4.5 | Fastest Claude model, optimized for speed |
+| Native MCP connector | No subprocess management, simpler than MCP SDK |
+| Web search fallback | Covers libraries not in Context7's index |
+| Environment variables only | Simplest configuration, no file management |
+| Rich for output | Best terminal markdown/syntax highlighting |
 
 ## Tech Stack
 
 **Language:** Python 3.11+
 
 **Dependencies:**
-- `requests>=2.31.0` - HTTP client
+- `anthropic>=0.40.0` - Claude API client with MCP support
 - `rich>=13.7.0` - Terminal formatting
 - `click>=8.1.0` - CLI framework
-- `toml` (built-in Python 3.11+) - Config parsing
 
-**API:** Context7 REST API v2
+**External Services:**
+- Anthropic Messages API (Claude Haiku 4.5)
+- Context7 MCP Server (`https://mcp.context7.com/mcp`)
 
-## Integration Points
+## API Integration
 
-### Context7 API
-- **Endpoint 1:** `GET /api/v2/libs/search?libraryName={name}&query={query}`
-  - Used for library resolution
-  - Returns list of matching libraries with confidence scores
+### Anthropic Messages API
 
-- **Endpoint 2:** `GET /api/v2/context?libraryId={id}&query={query}&tokens={count}`
-  - Used for fetching documentation
-  - Returns formatted documentation with code examples
-
-- **Authentication:** Bearer token in Authorization header
-
-### Config File
-- **Location:** `~/.coderef/config.toml`
-- **Format:** TOML
-- **Contents:** API key, display preferences
-
-## Data Flow
-
-```
-User runs: coderef "question about X"
-    ↓
-CLI parses arguments
-    ↓
-ConfigManager loads API key from ~/.coderef/config.toml or environment variable
-    ↓
-LibraryResolver extracts keywords from question
-    ↓
-APIClient.search_library() → Context7 API
-    ↓
-LibraryResolver calculates confidence score
-    ↓
-If confidence ≥ 0.8: Continue automatically
-If confidence < 0.8: Check --skip-library-detect flag
-    ↓ If not skipped: Prompt user to specify library
-    ↓
-If --skip-library-detect: Skip detection, let Context7 handle library resolution
-    ↓
-APIClient.get_context() → Context7 API (with or without libraryId)
-    ↓
-OutputFormatter.format_response()
-    ↓
-Display to terminal with Rich
-```
-User runs: coderef "question about X"
-    ↓
-CLI parses arguments
-    ↓
-ConfigManager loads API key from ~/.coderef/config.toml
-    ↓
-LibraryResolver extracts keywords from question
-    ↓
-APIClient.search_library() → Context7 API
-    ↓
-LibraryResolver calculates confidence score
-    ↓
-If confidence ≥ 0.8: Continue automatically
-If confidence < 0.8: Prompt user to specify library
-    ↓
-APIClient.get_context() → Context7 API
-    ↓
-OutputFormatter.format_response()
-    ↓
-Display to terminal with Rich
-```
-
-## Module Interfaces
-
-### Context7Client
 ```python
-class Context7Client:
-    def __init__(self, api_key: str)
-    def search_library(self, library_name: str, query: str) -> List[dict]
-    def get_context(self, library_id: str, query: str, tokens: int = 5000) -> dict
-    def validate_api_key(self) -> bool
+client.beta.messages.create(
+    model="claude-haiku-4-5",
+    max_tokens=2000,
+    system=SYSTEM_PROMPT,
+    messages=[{"role": "user", "content": question}],
+    mcp_servers=[{
+        "type": "url",
+        "url": "https://mcp.context7.com/mcp",
+        "name": "context7",
+        "authorization_token": "..."  # Optional, for higher rate limits
+    }],
+    tools=[
+        {"type": "mcp_toolset", "mcp_server_name": "context7"},
+        {"type": "web_search_20250305", "name": "web_search", "max_uses": 3}
+    ],
+    betas=["mcp-client-2025-11-20", "web-search-2025-03-05"]
+)
 ```
 
-### LibraryResolver
-```python
-class LibraryResolver:
-    def __init__(self, api_client: Context7Client)
-    def resolve_from_question(self, question: str) -> tuple[str, float]
-    def extract_keywords(self, question: str) -> List[str]
-    def calculate_confidence(self, match: dict, keywords: List[str]) -> float
-    def get_confidence_level(self, score: float) -> str  # "high", "medium", "low"
-```
+### Context7 MCP Tools
 
-### OutputFormatter
-```python
-class OutputFormatter:
-    def __init__(self, theme: str = "default", code_theme: str = "monokai")
-    def format_response(self, context: dict, library_id: str) -> None
-    def format_library_header(self, library_id: str) -> Panel
-    def format_code_block(self, code: str, language: str) -> Syntax
-    def format_markdown(self, text: str) -> Markdown
-    def format_error(self, message: str) -> Panel
-```
+| Tool | Purpose |
+|------|---------|
+| `resolve-library-id` | Find Context7 library ID from query |
+| `query-docs` | Fetch documentation for a library |
 
-### ConfigManager
-```python
-class ConfigManager:
-    def __init__(self, config_path: str = "~/.coderef/config.toml")
-    def get_api_key(self) -> str | None
-    def set_api_key(self, api_key: str) -> None
-    def config_exists(self) -> bool
-    def create_config(self) -> None
-    def get_display_theme(self) -> str
-    def get_code_theme(self) -> str
-```
+### Beta Features Used
 
-## Error Handling Strategy
+| Feature | Header | Purpose |
+|---------|--------|---------|
+| MCP Connector | `mcp-client-2025-11-20` | Native MCP server connection |
+| Web Search | `web-search-2025-03-05` | Fallback documentation source |
 
-| Error Type | Source | Handling |
-|------------|--------|----------|
-| Config not found | ConfigManager | Show first-time setup message |
-| Invalid API key | APIClient (401/403) | Prompt to re-run --init |
-| Rate limit exceeded | APIClient (429) | Show error with retry message |
-| Library not found | APIClient (404) | Prompt to use --library flag |
-| Low confidence | LibraryResolver | Prompt to specify library |
-| Network error | requests | Show connection error |
-| Invalid input | CLI/Click | Show usage message |
+## Configuration
 
-## Configuration Schema
+### Environment Variables
 
-```toml
-# ~/.coderef/config.toml
-[context7]
-api_key = "ctx7sk_..."
-```
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | Yes | Claude API authentication |
+| `CONTEXT7_API_KEY` | No | Context7 higher rate limits |
 
-**Environment Variable:** `CONTEXT7_API_KEY`
+### System Prompt
 
-During initialization (`coderef --init`), the tool first checks the `CONTEXT7_API_KEY` environment variable. If present and valid, it uses the key directly. If not, it falls back to interactive prompting.
-
-### Configuration Precedence
-
-coderef looks for API key in this order for all commands:
-
-1. **Environment variable**: `CONTEXT7_API_KEY`
-   - Checked for all commands (init, queries)
-   - Highest priority
-   - Runtime override
-
-2. **Config file**: `~/.coderef/config.toml`
-   - Used as fallback if env var not set
-   - Persisted by `coderef --init`
-
-This means if `CONTEXT7_API_KEY` is set, you can use coderef immediately without running init.
-
-**Note:** Display themes are hardcoded in `OutputFormatter` (default theme, monokai code theme) but can be extended to support configurable themes in the future.
+The agent uses a carefully crafted system prompt that instructs Claude to:
+1. Use Context7 tools first for documentation
+2. Fall back to web search if Context7 fails
+3. Return only: code snippet + one-sentence explanation
+4. No preamble, greetings, or filler
 
 ## File Structure
 
 ```
 coderef/
-├── docs/
-│   ├── core/
-│   │   ├── PRD.md
-│   │   ├── ARCHITECTURE.md
-│   │   └── STANDARDS.md
-│   ├── stories/                    # Active work
-│   ├── reference/
-│   │   └── completed/              # Completed stories
-│   │       ├── 001-initial-cli.md
-│   │       ├── 002-api-client.md
-│   │       └── 003-cli-integration.md
-│   ├── skills/
-│   └── logs/                       # Session summaries
 ├── src/
 │   └── coderef/
-│       ├── __init__.py             # Package exports
-│       ├── main.py                 # CLI entry point
-│       ├── config.py               # ConfigManager
-│       ├── api_client.py           # Context7Client
-│       ├── library_resolver.py     # LibraryResolver
-│       ├── output.py               # OutputFormatter
-│       └── utils.py                # Utility functions
+│       ├── __init__.py    # Package exports
+│       ├── agent.py       # Claude + MCP integration
+│       ├── main.py        # CLI entry point
+│       └── output.py      # Rich markdown output
 ├── tests/
-│   ├── __init__.py
-│   ├── test_config.py              # 12 tests
-│   ├── test_api_client.py          # 11 tests
-│   └── test_library_resolver.py    # 18 tests
-├── pyproject.toml                  # Python project config
-├── requirements.txt                # Dependencies
-├── README.md
-└── .gitignore
+│   └── test_agent.py      # Agent unit tests
+├── docs/
+│   └── core/
+│       ├── PRD.md
+│       └── ARCHITECTURE.md
+├── pyproject.toml
+└── README.md
 ```
 
-## Security Considerations
+## Error Handling
 
-- API key stored in user home directory (not in project)
-- Config file permissions restricted to user only (600)
-- API key never logged or displayed in output
-- HTTPS used for all API calls
-- Input validation before API calls
+| Error | Source | Handling |
+|-------|--------|----------|
+| Missing API key | Environment | Exit with clear message |
+| API error | Anthropic | Display error, exit 1 |
+| No response | Claude | Return fallback message |
 
-## Performance Considerations
+## Performance Characteristics
 
-- Config operations are synchronous and fast (<100ms)
-- API calls have 10-second timeout
-- No caching (out of scope)
-- Output formatting is synchronous (terminal is blocking)
+- **Latency:** 2-5 seconds typical (API-bound)
+- **Token usage:** ~500-2000 output tokens per query
+- **Cost:** ~$0.001-0.005 per query (Haiku pricing)
 
 ## Extensibility
 
-- Easy to add new config options (extend TOML schema)
-- Easy to add new CLI flags (Click decorators)
-- Easy to add new API endpoints (Context7Client methods)
-- Easy to add new output themes (Rich themes)
-- Easy to add new confidence strategies (LibraryResolver methods)
+The architecture supports future enhancements:
+- Add `--model` flag for model selection
+- Add `--verbose` flag for debug output
+- Add caching layer for repeated queries
+- Add streaming output for long responses

@@ -1,6 +1,8 @@
 # coderef
 
-CLI tool for querying up-to-date code documentation using the Context7 API.
+Succinct code example agent powered by Claude and Context7.
+
+Get accurate, working code examples with minimal explanation—fast.
 
 ## Installation
 
@@ -9,230 +11,126 @@ CLI tool for querying up-to-date code documentation using the Context7 API.
 git clone <repository-url>
 cd coderef
 
-# Create virtual environment
+# Install with uv (recommended)
+uv venv
+source .venv/bin/activate
+uv pip install -e .
+
+# Or with pip
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Or install in development mode
 pip install -e .
 ```
 
-Alternatively, use `uv` for faster package management:
+## Setup
+
+Set your Anthropic API key:
 
 ```bash
-# Create virtual environment
-uv venv
-source .venv/bin/activate
-
-# Install dependencies
-uv pip install -r requirements.txt
-uv pip install -e .
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-## First-Time Setup
-
-Before using coderef, you need to set up your Context7 API key.
-
-1. Get a free API key at [context7.com/dashboard](https://context7.com/dashboard)
-2. Run the initialization command:
-
-**Option 1: Environment variable (recommended)**
+Optionally, set a Context7 API key for higher rate limits:
 
 ```bash
-# Set in shell profile (.zshrc, .bashrc, etc.)
 export CONTEXT7_API_KEY=ctx7sk-...
-
-# Then use directly (no init required)
-coderef "How do I use React hooks?"
-
-# Or run init to save to config file
-CONTEXT7_API_KEY=ctx7sk-... coderef --init
 ```
 
-This is the fastest method. Accepted formats:
-- `ctx7sk-...` (current format with hyphen)
-- `ctx7sk_...` (legacy format with underscore)
-
-**How it works:**
-- Environment variable is checked for every command (highest priority)
-- Config file is used as fallback
-- If env var is set, no init step required
-
-**Option 2: Interactive prompt**
-
-```bash
-coderef --init
-```
-
-You'll be prompted to enter and confirm your API key. This provides extra security but requires typing the key twice.
+Get your API keys:
+- Anthropic: [console.anthropic.com](https://console.anthropic.com)
+- Context7 (optional): [context7.com/dashboard](https://context7.com/dashboard)
 
 ## Usage
 
-Ask questions about code documentation in natural language:
-
 ```bash
-# Simple question (auto-detect library)
-coderef "How do I use React hooks?"
+# Get a code example
+coderef "modern C++ fold_left"
 
-# Explicit library
-coderef "How do I create middleware?" --library /vercel/next.js
+# Rust iterators
+coderef "Rust iterators filter map collect"
 
-# With version
-coderef "How do I use app router?" --library /vercel/next.js --version v15.0.0
+# Python async
+coderef "Python asyncio gather example"
 
-# Token limit
-coderef "Explain useState" --tokens 8000
+# React hooks
+coderef "React useEffect cleanup"
+
+# Limit response length
+coderef "Go channels select" --tokens 1000
 ```
 
-### Flags
+### Options
 
 | Flag | Short | Description | Default |
 |------|-------|-------------|---------|
-| `--library` | `-l` | Explicitly specify library ID (e.g., /facebook/react) | Auto-detect |
-| `--tokens` | `-t` | Token limit for context (1000-50000) | 5000 |
-| `--version` | `-v` | Library version (e.g., v18.3.1) | Latest |
-| `--init` | | Initialize configuration with API key | |
-| `--debug` | | Enable debug output for troubleshooting | False |
+| `--tokens` | `-t` | Max response tokens | 2000 |
 
-### Command Reference
+### Output
 
-```bash
-# Show help
-coderef --help
+coderef returns:
+1. A minimal, working code snippet
+2. A one-sentence explanation
 
-# Initialize configuration
-coderef --init
-
-# Initialize with debug output
-DEBUG=true coderef --init
-coderef --init --debug
-
-# Query documentation
-coderef "How do I use useEffect in React?"
-coderef "How do I create a FastAPI endpoint?" --library /tiangolo/fastapi
-coderef "What's new in Next.js 15?" --library /vercel/next.js --version v15.0.0
-```
+No preamble. No filler. Just code.
 
 ## How It Works
 
-1. You ask a question about a programming language or framework
-2. coderef automatically detects the relevant library from your question
-3. It queries the Context7 API for up-to-date documentation
-4. Code examples are displayed with syntax highlighting
-5. Explanations are formatted in readable markdown
-
-## Library Auto-Detection
-
-coderef uses intelligent library detection based on keywords in your question:
-
-- **Languages:** python, javascript, typescript, java, go, rust, c#, ruby, php, swift, kotlin
-- **Frameworks:** react, vue, angular, next.js, express, fastapi, django, flask, spring, rails, laravel, nestjs, gin
-- **Libraries:** pandas, numpy, matplotlib, requests, tensorflow, pytorch, tensorflow, scikit-learn, pytest, jest, lodash, moment
-
-If the tool detects the library with high confidence (≥0.8), it uses that library automatically. For medium confidence (0.5-0.8), it shows a warning. For low confidence (<0.5), it prompts you to specify the library explicitly with the `--library` flag.
-
-## Troubleshooting
-
-### Configuration not found
-
 ```
-❌ Configuration not found.
-Run [bold]coderef --init[/bold] to set up.
+Your query
+    │
+    ▼
+Claude Haiku 4.5 + Context7 MCP
+    │
+    ├── Tries Context7 docs first (accurate, up-to-date)
+    │
+    ├── Falls back to web search if needed
+    │
+    ▼
+Concise code example
 ```
 
-Run `coderef --init` to set up your configuration. You can either:
+1. You ask about any programming concept
+2. Claude uses Context7 MCP to find accurate documentation
+3. If Context7 doesn't have it, Claude searches the web
+4. Claude synthesizes a minimal, working example
+5. Output: code + one-line explanation
 
+## Examples
+
+**Query:**
 ```bash
-# Fast: Use environment variable (paste once)
-CONTEXT7_API_KEY=ctx7sk-... coderef --init
-
-# Secure: Interactive prompt (type twice)
-coderef --init
+coderef "Python dataclass frozen"
 ```
 
-**Note:** If you've already set `CONTEXT7_API_KEY` in your shell profile, it should work immediately without running init. Try running a query directly.
+**Output:**
+```python
+from dataclasses import dataclass
 
-### Environment variable not detected
+@dataclass(frozen=True)
+class Point:
+    x: int
+    y: int
 
-If you set `CONTEXT7_API_KEY` in `.zshrc` but coderef doesn't detect it:
+p = Point(1, 2)
+# p.x = 3  # Raises FrozenInstanceError
+```
+A frozen dataclass is immutable after creation.
 
-1. **Reload your shell profile:**
-   ```bash
-   source ~/.zshrc
-   ```
+---
 
-2. **Or restart your terminal** to apply changes
-
-3. **Verify env var is set:**
-   ```bash
-   echo $CONTEXT7_API_KEY
-   ```
-   This should show your API key.
-
-4. **Check your shell profile:**
-   ```bash
-   cat ~/.zshrc | grep CONTEXT7_API_KEY
-   ```
-   Ensure line starts with `export`:
-   ```bash
-   export CONTEXT7_API_KEY=ctx7sk-...
-   ```
-
-5. **Test with DEBUG mode:**
-   ```bash
-   DEBUG=true coderef --init
-   ```
-   This will show detailed information about env var detection.
-
+**Query:**
 ```bash
-# Fast: Use environment variable (paste once)
-CONTEXT7_API_KEY=ctx7sk_... coderef --init
-
-# Secure: Interactive prompt (type twice)
-coderef --init
+coderef "Rust Result map_err"
 ```
 
-### Invalid API key
-
+**Output:**
+```rust
+fn parse_number(s: &str) -> Result<i32, String> {
+    s.parse::<i32>()
+        .map_err(|e| format!("Parse error: {}", e))
+}
 ```
-❌ Invalid API key format. Key must start with 'ctx7sk_'
-```
-
-Make sure you're using a Context7 API key from the dashboard.
-
-If using the environment variable:
-```bash
-CONTEXT7_API_KEY=ctx7sk-... coderef --init
-```
-
-Ensure the key is valid and starts with `ctx7sk-` (current format) or `ctx7sk_` (legacy format).
-
-### Library not found
-
-```
-❌ Library not found. Check the [bold]--library[/bold] flag.
-```
-
-Try using the `--library` flag to explicitly specify the library ID, or rephrase your question to be more specific.
-
-### Low confidence library match
-
-```
-⚠️ Using library: /org/repo (confidence: 0.42)
-```
-
-The tool is unsure about the library. Use the `--library` flag to specify explicitly.
-
-### Rate limit exceeded
-
-```
-❌ Rate limit exceeded. Please wait before retrying.
-```
-
-You've reached the API rate limit. Wait a bit before making more requests, or get a paid plan at [context7.com](https://context7.com).
+`map_err` transforms the error type while preserving the success value.
 
 ## Development
 
@@ -240,17 +138,23 @@ You've reached the API rate limit. Wait a bit before making more requests, or ge
 # Run tests
 uv run pytest tests/ -v
 
-# Run specific test file
-uv run pytest tests/test_config.py -v
-
-# Run with coverage
-uv run pytest tests/ --cov=coderef
+# Install dev dependencies
+uv pip install -e ".[dev]"
 ```
 
 ## Requirements
 
-- Python 3.11 or higher
-- Linux (currently only Linux is supported)
+- Python 3.11+
+- `ANTHROPIC_API_KEY` environment variable
+
+## Architecture
+
+- **Claude Haiku 4.5**: Fast inference for quick responses
+- **Context7 MCP**: Accurate, up-to-date documentation
+- **Web Search**: Fallback for libraries not in Context7
+- **Rich**: Markdown rendering with syntax highlighting
+
+See [docs/core/ARCHITECTURE.md](docs/core/ARCHITECTURE.md) for details.
 
 ## License
 
