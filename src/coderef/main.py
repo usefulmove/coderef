@@ -20,8 +20,11 @@ def main(question: str, tokens: int) -> None:
     """Get succinct code examples for programming queries.
 
     Examples:
+
         coderef "modern C++ fold_left"
+
         coderef "Rust iterators filter map"
+
         coderef "Python asyncio gather"
     """
     if not os.environ.get("ANTHROPIC_API_KEY"):
