@@ -1,6 +1,6 @@
 # coderef
 
-Succinct code example agent powered by Claude and Context7.
+Code syntax example agent powered by Claude and Context7.
 
 ## Installation
 
