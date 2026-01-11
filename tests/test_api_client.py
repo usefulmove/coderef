@@ -1,0 +1,169 @@
+"""Tests for Context7Client."""
+
+from unittest.mock import Mock, patch
+
+import pytest
+import requests
+
+from coderef.api_client import (
+    APIError,
+    AuthError,
+    Context7Client,
+    NotFoundError,
+    RateLimitError,
+)
+
+
+class TestContext7Client:
+    """Test Context7Client class."""
+
+    def test_init_stores_api_key(self):
+        """Test that init stores API key."""
+        client = Context7Client("test_key")
+        assert client.api_key == "test_key"
+        assert client.base_url == "https://context7.com/api/v2"
+
+    @patch("coderef.api_client.requests.request")
+    def test_make_request_adds_auth_header(self, mock_request):
+        """Test that _make_request adds Authorization header."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": []}
+        mock_response.headers.get.return_value = "application/json"
+        mock_request.return_value = mock_response
+
+        client = Context7Client("test_key")
+        client._make_request("GET", "libs/search", {"query": "test"})
+
+        mock_request.assert_called_once()
+        call_kwargs = mock_request.call_args[1]
+        assert call_kwargs["headers"]["Authorization"] == "Bearer test_key"
+
+    @patch("coderef.api_client.requests.request")
+    def test_search_library_calls_correct_endpoint(self, mock_request):
+        """Test that search_library calls correct API endpoint."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": [{"id": "test"}]}
+        mock_response.headers.get.return_value = "application/json"
+        mock_request.return_value = mock_response
+
+        client = Context7Client("test_key")
+        results = client.search_library("react", "hooks")
+
+        mock_request.assert_called_once()
+        call_args = mock_request.call_args[0]
+        assert call_args[0] == "GET"
+        assert call_args[1] == "https://context7.com/api/v2/libs/search"
+        assert mock_request.call_args[1]["params"] == {
+            "libraryName": "react",
+            "query": "hooks",
+        }
+        assert results == [{"id": "test"}]
+
+    @patch("coderef.api_client.requests.request")
+    def test_search_library_handles_401_raises_auth_error(self, mock_request):
+        """Test that search_library raises AuthError on 401."""
+        http_error = requests.HTTPError("401 Unauthorized")
+        http_error.response = Mock(status_code=401, headers={})
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock(side_effect=http_error)
+        mock_request.return_value = mock_response
+
+        client = Context7Client("test_key")
+
+        with pytest.raises(AuthError, match="Invalid API key"):
+            client.search_library("react", "hooks")
+
+    @patch("coderef.api_client.requests.request")
+    def test_search_library_handles_429_raises_rate_limit_error(self, mock_request):
+        """Test that search_library raises RateLimitError on 429."""
+        http_error = requests.HTTPError("429 Too Many Requests")
+        http_error.response = Mock(status_code=429, headers={"Retry-After": "60"})
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock(side_effect=http_error)
+        mock_request.return_value = mock_response
+
+        client = Context7Client("test_key")
+
+        with pytest.raises(RateLimitError, match="Rate limit exceeded"):
+            client.search_library("react", "hooks")
+
+    def test_get_context_validates_token_range(self):
+        """Test that get_context raises ValueError for invalid tokens."""
+        client = Context7Client("test_key")
+
+        with pytest.raises(ValueError, match="Tokens must be between"):
+            client.get_context("/test/lib", "query", tokens=999)
+
+        with pytest.raises(ValueError, match="Tokens must be between"):
+            client.get_context("/test/lib", "query", tokens=50001)
+
+    @patch("coderef.api_client.requests.request")
+    def test_get_context_calls_correct_endpoint(self, mock_request):
+        """Test that get_context calls correct API endpoint."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"context": "test"}
+        mock_response.headers.get.return_value = "application/json"
+        mock_request.return_value = mock_response
+
+        client = Context7Client("test_key")
+        result = client.get_context("/facebook/react", "hooks", tokens=8000)
+
+        mock_request.assert_called_once()
+        call_args = mock_request.call_args[0]
+        assert call_args[0] == "GET"
+        assert call_args[1] == "https://context7.com/api/v2/context"
+        assert mock_request.call_args[1]["params"] == {
+            "libraryId": "/facebook/react",
+            "query": "hooks",
+            "tokens": 8000,
+        }
+        assert result == {"context": "test"}
+
+    @patch("coderef.api_client.requests.request")
+    def test_get_context_handles_text_response(self, mock_request):
+        """Test that get_context handles plain text response."""
+        mock_response = Mock()
+        mock_response.text = "Plain text content"
+        mock_response.headers.get.return_value = "text/plain"
+        mock_request.return_value = mock_response
+
+        client = Context7Client("test_key")
+        result = client.get_context("/facebook/react", "hooks")
+
+        assert result == {"context": "Plain text content", "examples": []}
+
+    @patch("coderef.api_client.requests.request")
+    def test_validate_api_key_returns_true_for_valid_key(self, mock_request):
+        """Test that validate_api_key returns True for valid key."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": []}
+        mock_response.headers.get.return_value = "application/json"
+        mock_request.return_value = mock_response
+
+        client = Context7Client("valid_key")
+        assert client.validate_api_key() is True
+
+    @patch("coderef.api_client.requests.request")
+    def test_validate_api_key_returns_false_for_invalid_key(self, mock_request):
+        """Test that validate_api_key returns False for invalid key."""
+        http_error = requests.HTTPError("401 Unauthorized")
+        http_error.response = Mock(status_code=401, headers={})
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock(side_effect=http_error)
+        mock_request.return_value = mock_response
+
+        client = Context7Client("invalid_key")
+        assert client.validate_api_key() is False
+
+    @patch("coderef.api_client.requests.request")
+    def test_network_error_raises_api_error(self, mock_request):
+        """Test that network errors raise APIError."""
+        mock_request.side_effect = requests.ConnectionError("Network error")
+
+        client = Context7Client("test_key")
+
+        with pytest.raises(APIError, match="Network error"):
+            client.search_library("react", "hooks")
