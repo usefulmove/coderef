@@ -2,8 +2,6 @@
 
 Succinct code example agent powered by Claude and Context7.
 
-Get accurate, working code examples with minimal explanation—fast.
-
 ## Installation
 
 ```bash
